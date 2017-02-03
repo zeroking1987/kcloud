@@ -1,0 +1,141 @@
+unit StockInPS;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, WareInOutPS, cxGraphics, cxControls, cxLookAndFeels,
+  cxLookAndFeelPainters, cxContainer, cxEdit, dxSkinsCore,
+  dxSkinsDefaultPainters, dxSkinscxPCPainter, cxStyles, cxCustomData, cxFilter,
+  cxData, cxDataStorage, DB, cxDBData, cxButtonEdit, cxDBLookupComboBox,
+  cxTextEdit, dxSkinsdxBarPainter, frxClass, frxDBSet, cxGridCustomPopupMenu,
+  cxGridPopupMenu, Menus, ADODB, dxBar, cxClasses, cxMemo, cxDBEdit, cxMaskEdit,
+  cxDropDownEdit, cxCalendar, cxGroupBox, cxGridLevel, cxGridCustomTableView,
+  cxGridTableView, cxGridDBTableView, cxGridCustomView, cxGrid, cxPC, StdCtrls,
+  ExtCtrls, cxPCdxBarPopupMenu, dxSkinOffice2010Blue, cxRadioGroup,
+  cxLookupEdit, cxDBLookupEdit, cxDBExtLookupComboBox, cxCheckBox,
+  dxSkinDevExpressStyle, dxSkinSpringTime, dxSkinValentine, dxBarBuiltInMenu,
+  cxNavigator, cxLabel, cxMRUEdit;
+
+type
+  TStockInFM = class(TWareInOutFM)
+    N1: TMenuItem;
+    NStockOrder: TMenuItem;
+    dsPrvWeight: TDataSource;
+    qyPrvWeight: TADOQuery;
+    qyPrvWeightPrvName: TStringField;
+    qyPrvWeightweight: TFMTBCDField;
+    cxDBCheckBox1: TcxDBCheckBox;
+    NStockInvoice: TMenuItem;
+    cxDBButtonEdit1: TcxDBButtonEdit;
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure cxgrdWeightPropertiesValidate(Sender: TObject;
+      var DisplayValue: Variant; var ErrorText: TCaption; var Error: Boolean);
+    procedure dxBarButton1Click(Sender: TObject);
+    procedure NStockOrderClick(Sender: TObject);
+    procedure strngfldDetItemIdChange(Sender: TField);
+    procedure qyDetAfterScroll(DataSet: TDataSet);
+    procedure NStockInvoiceClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  StockInFM: TStockInFM;
+
+implementation
+
+{$R *.dfm}
+
+uses StockInStockOrderRfPS, PrvQPS, SGeneralPS, PublicPS, ControlPublicPS, DataPS, RemarkGridPS;
+
+procedure TStockInFM.cxgrdWeightPropertiesValidate(Sender: TObject;
+  var DisplayValue: Variant; var ErrorText: TCaption; var Error: Boolean);
+begin
+  inherited;
+  Error := false;
+  if DisplayValue = '' then
+    DisplayValue := 0;
+  qyDet.FieldByName('Weight').AsFloat := DisplayValue;
+  qyDet.FieldByName('AllWeight').AsFloat := DisplayValue * qyDet.FieldByName('MainNum').AsFloat;
+end;
+
+procedure TStockInFM.dxBarButton1Click(Sender: TObject);
+begin
+  try
+    //inherited;
+    if not qyHed.FieldByName('bMaxAudit').AsBoolean then
+    begin
+      ShowBox('该单还未审核完成！');
+      Exit;
+    end;
+    if qyHed.FieldByName('bFuHe').AsBoolean then
+    begin
+      ShowBox('已经复核！');
+      Exit;
+    end;
+    qyHed.Edit;
+    qyHed.FieldByName('bFuHe').AsBoolean := true;
+    qyHed.UpdateBatch();
+    //复核更新价格表
+    ExeSql(' Exec prUpdateItemPrice' + QuotedStr(sTableId) + ',' + QuotedStr(Trim(cxEdtNo.Text)));
+    ShowFMInfo(sTableId,qyHed);
+  except
+    ShowWarn('复核失败！');
+  end;
+end;
+
+procedure TStockInFM.FormCreate(Sender: TObject);
+begin
+  sFMId := 'StockInFM';
+  sFMName := self.Caption;
+  sTableId := 'StockIn';
+  inherited;
+end;
+
+procedure TStockInFM.FormDestroy(Sender: TObject);
+begin
+  inherited;
+  StockInFM := nil;
+end;
+
+procedure TStockInFM.NStockInvoiceClick(Sender: TObject);
+begin
+  inherited;
+  BillView('StockInvoiceHDTB', 'select * from StockInvoiceHDTB where InvoiceNo in (select InvoiceNo from StockInvoiceDTTB where IoId=' + QuotedStr(qyDet.FieldByName('AutoNo').AsString) + ')');
+end;
+
+procedure TStockInFM.NStockOrderClick(Sender: TObject);
+begin
+  inherited;
+  BillView('StockOrderHDTB', 'select * from StockOrderHDTB where StockOrderNo=' + QuotedStr(qyDet.FieldByName('StockNo').AsString));
+end;
+
+procedure TStockInFM.qyDetAfterScroll(DataSet: TDataSet);
+begin
+  inherited;
+  with qyPrvWeight do
+  begin
+    if Active then Close;
+    SQL.Clear;
+    SQL.Add('select Distinct PrvName,weight=ISNULL(Weight,0) from StockPriceTB where PrvId=' + QuotedStr(qyDet.FieldByName('ObjectId').AsString) + ' and ItemId=' + QuotedStr(qyDet.FieldByName('ItemId').AsString));
+    Open;
+  end;
+end;
+
+procedure TStockInFM.strngfldDetItemIdChange(Sender: TField);
+begin
+  inherited;
+  if not DataFM.qyStockPrice.Active then DataFM.qyStockPrice.open;
+  DataFM.qyStockPrice.Requery();
+  if DataFM.qyStockPrice.Locate('PrvId;ItemId', vararrayof([qyHed.FieldByName('ObjectId').AsString, qyDet.FieldByName('ItemId').AsString]), []) then
+  begin
+    qyDet.FieldByName('Weight').Value := DataFM.qyStockPrice.FieldByName('Weight').Value;
+    UpdateData(cxgrdtbv, 'Weight');
+  end;
+end;
+
+end.
